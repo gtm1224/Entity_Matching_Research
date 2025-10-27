@@ -1,0 +1,13 @@
+# Ignore everything by default
+*
+
+# Allow data folder and its contents
+!data/
+!data/**
+
+# Allow Python files
+!*.py
+!requirements.txt
+
+# Keep the .gitignore file itself
+!.gitignore
