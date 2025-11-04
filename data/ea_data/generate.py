@@ -101,39 +101,44 @@ def load_prompt_template(prompt_path: str) -> str:
         return f.read().strip()
 
 
-def format_entity(row: pd.Series, columns: List[str]) -> str:
+def format_entity_row(row: pd.Series, suffix: str, base_columns: List[str]) -> str:
     """
-    Format an entity record as a string.
+    Format an entity row as a string with column names and values.
     
     Args:
         row: DataFrame row
-        columns: Column names to include (excluding 'id')
+        suffix: Column suffix ('_a' or '_b')
+        base_columns: Base column names (without suffix)
         
     Returns:
-        Formatted entity string
+        Formatted entity string like "[NAME] value [MANUFACTURER] value ..."
     """
     parts = []
-    for col in columns:
-        if col != 'id' and col in row:
-            # Convert column name to display format
-            display_name = col.upper().replace('_', ' ')
-            parts.append(f"[{display_name}] {row[col]}")
+    for col in base_columns:
+        col_with_suffix = f"{col}{suffix}"
+        if col_with_suffix in row.index:
+            col_name_upper = col.upper().replace('_', ' ')
+            parts.append(f"[{col_name_upper}] {row[col_with_suffix]}")
     return " ".join(parts)
 
 
-def create_prompt(prompt_template: str, entity_a: str, entity_b: str) -> str:
+def create_prompt(prompt_template: str, row: pd.Series, base_columns: List[str], label: str) -> str:
     """
     Create a complete prompt by appending the current example to the template.
     
     Args:
         prompt_template: Few-shot examples template
-        entity_a: Formatted Entity A string
-        entity_b: Formatted Entity B string
+        row: DataFrame row with both _a and _b columns
+        base_columns: Base column names (without suffix)
+        label: "MATCH" or "NOT A MATCH"
         
     Returns:
         Complete prompt for generation
     """
-    return f"{prompt_template}\nEntity A: {entity_a}\nEntity B: {entity_b}\nLabel: "
+    entity_a = format_entity_row(row, '_a', base_columns)
+    entity_b = format_entity_row(row, '_b', base_columns)
+    
+    return f"{prompt_template}\nEntity A: {entity_a}\nEntity B: {entity_b}\nLabel: {label}\nExplanation: "
 
 # ============================================================================
 # Async Request Handler
@@ -209,7 +214,7 @@ async def generate_explanation(
 
 async def process_batch(
     session: aiohttp.ClientSession,
-    batch_data: List[Tuple[int, str, str, str]],
+    batch_data: List[Tuple[int, str]],
     config: Config,
     logger: logging.Logger,
     semaphore: asyncio.Semaphore
@@ -219,7 +224,7 @@ async def process_batch(
     
     Args:
         session: aiohttp session
-        batch_data: List of (index, prompt, entity_a, entity_b) tuples
+        batch_data: List of (index, prompt) tuples
         config: Configuration object
         logger: Logger instance
         semaphore: Semaphore for concurrency control
@@ -232,7 +237,7 @@ async def process_batch(
             explanation = await generate_explanation(session, prompt, config, logger)
             return (idx, explanation)
     
-    tasks = [process_single(idx, prompt) for idx, prompt, _, _ in batch_data]
+    tasks = [process_single(idx, prompt) for idx, prompt in batch_data]
     results = await asyncio.gather(*tasks)
     return results
 
@@ -240,6 +245,7 @@ async def process_batch(
 async def process_all_batches(
     df: pd.DataFrame,
     prompt_template: str,
+    base_columns: List[str],
     config: Config,
     logger: logging.Logger
 ) -> pd.DataFrame:
@@ -249,6 +255,7 @@ async def process_all_batches(
     Args:
         df: DataFrame with merged entity data
         prompt_template: Few-shot prompt template
+        base_columns: Base column names (without suffix)
         config: Configuration object
         logger: Logger instance
         
@@ -258,12 +265,9 @@ async def process_all_batches(
     # Prepare all prompts
     prompts = []
     for idx, row in df.iterrows():
-        prompt = create_prompt(
-            prompt_template,
-            row['entity_a'],
-            row['entity_b']
-        )
-        prompts.append((idx, prompt, row['entity_a'], row['entity_b']))
+        label = "MATCH" if row['label'] == 1 else "NOT A MATCH"
+        prompt = create_prompt(prompt_template, row, base_columns, label)
+        prompts.append((idx, prompt))
     
     # Create semaphore for concurrency control
     semaphore = asyncio.Semaphore(config.max_concurrent)
@@ -304,7 +308,7 @@ def load_and_merge_data(
         dry_run: If True, only process first 10 rows
         
     Returns:
-        Tuple of (merged DataFrame, list of column names)
+        Tuple of (merged DataFrame, base column names)
     """
     logger.info("Loading input files...")
     
@@ -321,49 +325,31 @@ def load_and_merge_data(
     logger.info(f"Loaded {len(df_b)} records from table B")
     logger.info(f"Loaded {len(df_matches)} match pairs")
     
-    # Get column names (excluding 'id')
-    columns = [col for col in df_a.columns if col != 'id']
+    # Get base column names (excluding 'id')
+    base_columns = [col for col in df_a.columns if col != 'id']
     
     # Merge data
     df_merged = df_matches.copy()
     
-    # Merge with table A
+    # Merge with table A (adds columns with _a suffix)
     df_merged = df_merged.merge(
         df_a,
         left_on='ltable_id',
         right_on='id',
         suffixes=('', '_a')
-    )
+    ).drop(columns=['id'])
     
-    # Merge with table B
+    # Merge with table B (adds columns with _b suffix)
     df_merged = df_merged.merge(
         df_b,
         left_on='rtable_id',
         right_on='id',
         suffixes=('_a', '_b')
-    )
-    
-    # Format entities as strings
-    logger.info("Formatting entity strings...")
-    df_merged['entity_a'] = df_merged.apply(
-        lambda row: format_entity(
-            row,
-            [f"{col}_a" for col in columns]
-        ),
-        axis=1
-    )
-    
-    df_merged['entity_b'] = df_merged.apply(
-        lambda row: format_entity(
-            row,
-            [f"{col}_b" for col in columns]
-        ),
-        axis=1
-    )
+    ).drop(columns=['id'])
     
     logger.info(f"Merged {len(df_merged)} records for processing")
     
-    return df_merged, columns
+    return df_merged, base_columns
 
 # ============================================================================
 # Main Processing Pipeline
@@ -395,7 +381,7 @@ async def run_generation(
     start_time = time.time()
     
     # Load and merge data
-    df, columns = load_and_merge_data(
+    df, base_columns = load_and_merge_data(
         input_a_path,
         input_b_path,
         input_matches_path,
@@ -406,27 +392,30 @@ async def run_generation(
     # Load prompt template
     logger.info(f"Loading prompt template from {prompt_path}")
     prompt_template = load_prompt_template(prompt_path)
+
+    print(prompt_template)
     
-    # Process all records
-    logger.info("Starting explanation generation...")
-    df_with_explanations = await process_all_batches(
-        df,
-        prompt_template,
-        config,
-        logger
-    )
+    # # Process all records
+    # logger.info("Starting explanation generation...")
+    # df_with_explanations = await process_all_batches(
+    #     df,
+    #     prompt_template,
+    #     base_columns,
+    #     config,
+    #     logger
+    # )
     
-    # Select output columns
-    output_columns = ['ltable_id', 'rtable_id', 'label', 'explanation']
-    df_output = df_with_explanations[output_columns]
+    # # Select output columns
+    # output_columns = ['ltable_id', 'rtable_id', 'label', 'explanation']
+    # df_output = df_with_explanations[output_columns]
     
-    # Save results
-    logger.info(f"Saving results to {output_path}")
-    df_output.to_csv(output_path, index=False)
+    # # Save results
+    # logger.info(f"Saving results to {output_path}")
+    # df_output.to_csv(output_path, index=False)
     
-    elapsed_time = time.time() - start_time
-    logger.info(f"Processing complete in {elapsed_time:.2f} seconds")
-    logger.info(f"Generated {len(df_output)} explanations")
+    # elapsed_time = time.time() - start_time
+    # logger.info(f"Processing complete in {elapsed_time:.2f} seconds")
+    # logger.info(f"Generated {len(df_output)} explanations")
 
 # ============================================================================
 # CLI Interface
@@ -484,7 +473,7 @@ async def main():
         return
     
     # Setup logging
-    input_name = Path(config.input_A).stem if config.input_A else "default"
+    input_name = Path(config.input_A).parent.name.lower() if config.input_A else "default"
     logger = setup_logging(verbose=config.verbose, 
                            input_name=input_name)
     
@@ -519,7 +508,6 @@ async def main():
             logger=logger,
             dry_run=config.dry_run
         )
-        
     except Exception as e:
         logger.error(f"Generation failed: {e}")
         raise
