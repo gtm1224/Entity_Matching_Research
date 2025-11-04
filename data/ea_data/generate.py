@@ -1,36 +1,23 @@
 """
 Explanation Augmented (EA) Data Generator
 
-Generates explanations for entity matching questions by using
-a local LLM hosted via vLLM.
+Generates explanations for entity matching questions by using a local LLM hosted via vLLM.
 
 Usage:
-    python generate.py --input <path> --prompt <path> --output <path>
-
-    # Basic usage
-    python generate.py \
-        --input /home/danielruiz/workspace/phd/Entity_Matching_Research/data/Beer/train.csv \
-        --prompt /home/danielruiz/workspace/phd/Entity_Matching_Research/data/ea_data/prompts/beer.txt \
-        --output /home/danielruiz/workspace/phd/Entity_Matching_Research/data/ea_data/beer_train_ea.csv
-
-    # Advanced usage with custom configuration
-    python generate.py \
-        --input /home/danielruiz/workspace/phd/Entity_Matching_Research/data/Beer/train.csv \
-        --prompt /home/danielruiz/workspace/phd/Entity_Matching_Research/data/ea_data/prompts/beer.txt \
-        --output /home/danielruiz/workspace/phd/Entity_Matching_Research/data/ea_data/beer_train_ea.csv \
-        --endpoint http://localhost:8000/v1 \
-        --batch-size 100 \
-        --max-concurrent 20 \
-        --verbose
+    python generate.py --config config.yaml
+    
+    # Or with verbose logging and dry run
+    python generate.py --config config.yaml --verbose --dry-run
 """
 
 import asyncio
 import argparse
 import logging
 import time
-from dataclasses import dataclass
+import yaml
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional, Any
 import aiohttp
 import pandas as pd
 from tqdm import tqdm
@@ -41,35 +28,44 @@ from tqdm import tqdm
 
 @dataclass
 class Config:
-    """Configuration for spacing issue classifier."""
-    vllm_endpoint: str = "http://localhost:8000/v1"
-    model_name: str = "mistralai/Mistral-7B-Instruct-v0.1"
-    batch_size: int = 50
-    max_concurrent: int = 10
-    timeout: int = 30
-    max_retries: int = 3
-    # TODO: CONTINUE FROM HERE
+    """Configuration loaded from YAML file."""
+    config_dict: Dict[str, Any] = field(default_factory=dict)
     
-    def __post_init__(self):
-        """Validate configuration."""
-        if self.batch_size < 1:
-            raise ValueError("Batch size must be >= 1")
-        if self.max_concurrent < 1:
-            raise ValueError("Max concurrent requests must be >= 1")
-        if self.timeout < 1:
-            raise ValueError("Timeout must be >= 1 second")
-
+    @classmethod
+    def from_yaml(cls, yaml_path: str, **overrides) -> 'Config':
+        """Load configuration from YAML file."""
+        with open(yaml_path, 'r') as f:
+            config_dict = yaml.safe_load(f)
+        
+        # Filter out None values from overrides
+        overrides = {k: v for k, v in overrides.items() if v is not None}
+        config_dict.update(overrides)
+        
+        instance = cls(config_dict=config_dict)
+        return instance
+    
+    def __getattr__(self, name: str) -> Any:
+        """Allow dot notation access to config values."""
+        if name == 'config_dict':
+            return object.__getattribute__(self, name)
+        return self.config_dict.get(name)
+    
+    def __repr__(self) -> str:
+        """Pretty print configuration."""
+        return f"Config({self.config_dict})"
 
 # ============================================================================
 # Logging Configuration
 # ============================================================================
 
-def setup_logging(verbose: bool = False) -> logging.Logger:
+def setup_logging(verbose: bool = False,
+                  input_name: str = "") -> logging.Logger:
     """
     Configure logging for the classifier.
     
     Args:
         verbose: Enable verbose (DEBUG) logging
+        input_name: Name of the input file for logging context
         
     Returns:
         Configured logger instance
@@ -80,387 +76,357 @@ def setup_logging(verbose: bool = False) -> logging.Logger:
         level=level,
         format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.FileHandler('spacing_classifier.log'),
+            logging.FileHandler(f'generate_{input_name}.log'),
             logging.StreamHandler()
         ]
     )
     
     return logging.getLogger(__name__)
 
-
 # ============================================================================
 # Prompt Engineering
 # ============================================================================
 
-def build_classification_prompt(question: str) -> List[Dict[str, str]]:
+def load_prompt_template(prompt_path: str) -> str:
     """
-    Build few-shot prompt for spacing issue classification.
+    Load the few-shot prompt template from file.
     
     Args:
-        question: The question text to classify
+        prompt_path: Path to prompt template file
         
     Returns:
-        List of message dicts for OpenAI chat completion format
+        Prompt template string
     """
-    system_prompt = """You are a text quality classifier that identifies spacing issues in text. Your task is to detect when words are concatenated without proper spaces."""
+    with open(prompt_path, 'r') as f:
+        return f.read().strip()
+
+
+def format_entity(row: pd.Series, columns: List[str]) -> str:
+    """
+    Format an entity record as a string.
     
-    user_prompt = f"""Classify if the following text has spacing issues (words concatenated without spaces).
+    Args:
+        row: DataFrame row
+        columns: Column names to include (excluding 'id')
+        
+    Returns:
+        Formatted entity string
+    """
+    parts = []
+    for col in columns:
+        if col != 'id' and col in row:
+            # Convert column name to display format
+            display_name = col.upper().replace('_', ' ')
+            parts.append(f"[{display_name}] {row[col]}")
+    return " ".join(parts)
 
-Examples WITH spacing issues (respond with "1"):
-- "enormousmulticellularseaweeds"
-- "Drosophilamelanogastercultures"
-- "betweenapoenzymesandcofactors"
-- "Salmonellatyphimuriumhas"
-- "Comparephototrophsandchemotrophs"
-- "ofthe"
-- "Whatisthebasic"
 
-Examples WITHOUT spacing issues (respond with "0"):
-- "What is the basic unit of life?"
-- "Compare phototrophs and chemotrophs."
-- "Salmonella typhimurium has flagella."
-- "What are the characteristics of seaweeds?"
-- "The relationship between apoenzymes and cofactors"
-
-Text to classify: "{question}"
-
-Respond with only: 0 or 1"""
+def create_prompt(prompt_template: str, entity_a: str, entity_b: str) -> str:
+    """
+    Create a complete prompt by appending the current example to the template.
     
-    return [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt}
-    ]
-
+    Args:
+        prompt_template: Few-shot examples template
+        entity_a: Formatted Entity A string
+        entity_b: Formatted Entity B string
+        
+    Returns:
+        Complete prompt for generation
+    """
+    return f"{prompt_template}\nEntity A: {entity_a}\nEntity B: {entity_b}\nLabel: "
 
 # ============================================================================
 # Async Request Handler
 # ============================================================================
 
-async def classify_question_async(
+async def generate_explanation(
     session: aiohttp.ClientSession,
-    question: str,
-    index: int,
+    prompt: str,
     config: Config,
     logger: logging.Logger,
-    semaphore: asyncio.Semaphore
-) -> Tuple[int, int]:
+    retry_count: int = 0
+) -> str:
     """
-    Classify a single question using the LLM API with retry logic.
-    Uses vLLM's structured outputs for guaranteed binary response.
+    Generate explanation for a single entity pair using vLLM.
     
     Args:
-        session: aiohttp client session
-        question: Question text to classify
-        index: Original index in dataset
+        session: aiohttp session
+        prompt: Complete prompt string
         config: Configuration object
         logger: Logger instance
-        semaphore: Semaphore for concurrency control
+        retry_count: Current retry attempt
         
     Returns:
-        Tuple of (index, classification_result)
+        Generated explanation or empty string on failure
     """
-    # Handle edge cases
-    if not question or pd.isna(question):
-        return (index, 0)
+    url = f"{config.vllm_endpoint}/completions"
     
-    if not isinstance(question, str):
-        question = str(question)
+    payload = {
+        "model": config.model_name,
+        "prompt": prompt,
+        "min_tokens": config.min_new_tokens,
+        "max_tokens": config.max_new_tokens,
+        "top_k": config.topk,
+        "top_p": config.topp,
+        "temperature": 0.7,
+        "stop": ["</s>", "\n\n"]
+    }
     
-    if len(question.strip()) == 0:
-        return (index, 0)
-    
-    async with semaphore:
-        for attempt in range(config.max_retries):
-            try:
-                messages = build_classification_prompt(question)
+    try:
+        async with session.post(
+            url,
+            json=payload,
+            timeout=aiohttp.ClientTimeout(total=config.timeout)
+        ) as response:
+            if response.status == 200:
+                result = await response.json()
+                explanation = result['choices'][0]['text'].strip()
+                return explanation
+            else:
+                logger.warning(f"Request failed with status {response.status}")
+                if retry_count < config.max_retries:
+                    await asyncio.sleep(2 ** retry_count)  # Exponential backoff
+                    return await generate_explanation(session, prompt, config, logger, retry_count + 1)
+                return ""
                 
-                # Use vLLM structured outputs with choice constraint
-                payload = {
-                    "model": config.model_name,
-                    "messages": messages,
-                    "temperature": config.temperature,
-                    "max_tokens": 5,
-                    "extra_body": {
-                        "guided_choice": ["0", "1"],
-                        "chat_template_kwargs": {"enable_thinking": False},
-                    }
-                }
-                
-                timeout = aiohttp.ClientTimeout(total=config.timeout)
-                
-                async with session.post(
-                    f"{config.vllm_endpoint}/chat/completions",
-                    json=payload,
-                    timeout=timeout
-                ) as response:
-                    response.raise_for_status()
-                    data = await response.json()
-                    
-                    # Extract response text - guaranteed to be "0" or "1" as string
-                    content = data['choices'][0]['message']['content'].strip()
-                    
-                    # Convert string to int for storage
-                    if content == "0":
-                        classification = 0
-                    elif content == "1":
-                        classification = 1
-                    else:
-                        logger.warning(
-                            f"Unexpected value '{content}' for index {index}, treating as -1. "
-                            f"Full response: {data}"
-                        )
-                        classification = -1
-                    
-                    return (index, classification)
-                    
-            except asyncio.TimeoutError:
-                wait_time = 2 ** attempt
-                logger.warning(
-                    f"Timeout for index {index}, attempt {attempt + 1}/{config.max_retries}. "
-                    f"Retrying in {wait_time}s..."
-                )
-                await asyncio.sleep(wait_time)
-                
-            except aiohttp.ClientError as e:
-                wait_time = 2 ** attempt
-                logger.warning(
-                    f"API error for index {index}, attempt {attempt + 1}/{config.max_retries}: {e}. "
-                    f"Retrying in {wait_time}s..."
-                )
-                await asyncio.sleep(wait_time)
-                
-            except Exception as e:
-                logger.error(f"Unexpected error for index {index}: {e}", exc_info=True)
-                return (index, -1)
+    except asyncio.TimeoutError:
+        logger.warning(f"Request timeout (attempt {retry_count + 1}/{config.max_retries})")
+        if retry_count < config.max_retries:
+            await asyncio.sleep(2 ** retry_count)
+            return await generate_explanation(session, prompt, config, logger, retry_count + 1)
+        return ""
         
-        # All retries exhausted
-        logger.error(f"Failed to classify index {index} after {config.max_retries} attempts")
-        return (index, -1)
-
+    except Exception as e:
+        logger.error(f"Request failed: {e}")
+        if retry_count < config.max_retries:
+            await asyncio.sleep(2 ** retry_count)
+            return await generate_explanation(session, prompt, config, logger, retry_count + 1)
+        return ""
 
 # ============================================================================
 # Batch Processing
 # ============================================================================
 
 async def process_batch(
-    questions: List[str],
-    start_idx: int,
+    session: aiohttp.ClientSession,
+    batch_data: List[Tuple[int, str, str, str]],
     config: Config,
-    logger: logging.Logger
-) -> Dict[int, int]:
+    logger: logging.Logger,
+    semaphore: asyncio.Semaphore
+) -> List[Tuple[int, str]]:
     """
-    Process a batch of questions concurrently.
+    Process a batch of entity pairs concurrently.
     
     Args:
-        questions: List of question texts
-        start_idx: Starting index for this batch
+        session: aiohttp session
+        batch_data: List of (index, prompt, entity_a, entity_b) tuples
+        config: Configuration object
+        logger: Logger instance
+        semaphore: Semaphore for concurrency control
+        
+    Returns:
+        List of (index, explanation) tuples
+    """
+    async def process_single(idx: int, prompt: str) -> Tuple[int, str]:
+        async with semaphore:
+            explanation = await generate_explanation(session, prompt, config, logger)
+            return (idx, explanation)
+    
+    tasks = [process_single(idx, prompt) for idx, prompt, _, _ in batch_data]
+    results = await asyncio.gather(*tasks)
+    return results
+
+
+async def process_all_batches(
+    df: pd.DataFrame,
+    prompt_template: str,
+    config: Config,
+    logger: logging.Logger
+) -> pd.DataFrame:
+    """
+    Process all entity pairs in batches.
+    
+    Args:
+        df: DataFrame with merged entity data
+        prompt_template: Few-shot prompt template
         config: Configuration object
         logger: Logger instance
         
     Returns:
-        Dictionary mapping index to classification result
+        DataFrame with explanations added
     """
+    # Prepare all prompts
+    prompts = []
+    for idx, row in df.iterrows():
+        prompt = create_prompt(
+            prompt_template,
+            row['entity_a'],
+            row['entity_b']
+        )
+        prompts.append((idx, prompt, row['entity_a'], row['entity_b']))
+    
+    # Create semaphore for concurrency control
     semaphore = asyncio.Semaphore(config.max_concurrent)
     
+    # Process in batches
+    results = {}
     async with aiohttp.ClientSession() as session:
-        tasks = [
-            classify_question_async(
-                session, question, start_idx + i, config, logger, semaphore
-            )
-            for i, question in enumerate(questions)
-        ]
-        
-        results = await asyncio.gather(*tasks)
-        
-    return dict(results)
+        for i in tqdm(range(0, len(prompts), config.batch_size), desc="Processing batches"):
+            batch = prompts[i:i + config.batch_size]
+            batch_results = await process_batch(session, batch, config, logger, semaphore)
+            
+            for idx, explanation in batch_results:
+                results[idx] = explanation
+    
+    # Add explanations to dataframe
+    df['explanation'] = df.index.map(results)
+    return df
 
+# ============================================================================
+# Data Loading and Processing
+# ============================================================================
+
+def load_and_merge_data(
+    input_a_path: str,
+    input_b_path: str,
+    input_matches_path: str,
+    logger: logging.Logger,
+    dry_run: bool = False
+) -> Tuple[pd.DataFrame, List[str]]:
+    """
+    Load and merge the three input CSV files.
+    
+    Args:
+        input_a_path: Path to table A CSV
+        input_b_path: Path to table B CSV
+        input_matches_path: Path to matches CSV
+        logger: Logger instance
+        dry_run: If True, only process first 10 rows
+        
+    Returns:
+        Tuple of (merged DataFrame, list of column names)
+    """
+    logger.info("Loading input files...")
+    
+    # Load tables
+    df_a = pd.read_csv(input_a_path)
+    df_b = pd.read_csv(input_b_path)
+    df_matches = pd.read_csv(input_matches_path)
+    
+    if dry_run:
+        logger.info("DRY RUN: Processing first 10 rows only")
+        df_matches = df_matches.head(10)
+    
+    logger.info(f"Loaded {len(df_a)} records from table A")
+    logger.info(f"Loaded {len(df_b)} records from table B")
+    logger.info(f"Loaded {len(df_matches)} match pairs")
+    
+    # Get column names (excluding 'id')
+    columns = [col for col in df_a.columns if col != 'id']
+    
+    # Merge data
+    df_merged = df_matches.copy()
+    
+    # Merge with table A
+    df_merged = df_merged.merge(
+        df_a,
+        left_on='ltable_id',
+        right_on='id',
+        suffixes=('', '_a')
+    )
+    
+    # Merge with table B
+    df_merged = df_merged.merge(
+        df_b,
+        left_on='rtable_id',
+        right_on='id',
+        suffixes=('_a', '_b')
+    )
+    
+    # Format entities as strings
+    logger.info("Formatting entity strings...")
+    df_merged['entity_a'] = df_merged.apply(
+        lambda row: format_entity(
+            row,
+            [f"{col}_a" for col in columns]
+        ),
+        axis=1
+    )
+    
+    df_merged['entity_b'] = df_merged.apply(
+        lambda row: format_entity(
+            row,
+            [f"{col}_b" for col in columns]
+        ),
+        axis=1
+    )
+    
+    logger.info(f"Merged {len(df_merged)} records for processing")
+    
+    return df_merged, columns
 
 # ============================================================================
 # Main Processing Pipeline
 # ============================================================================
 
-async def classify_dataset(
-    input_path: str,
+async def run_generation(
+    input_a_path: str,
+    input_b_path: str,
+    input_matches_path: str,
+    prompt_path: str,
     output_path: str,
     config: Config,
     logger: logging.Logger,
     dry_run: bool = False
 ) -> None:
     """
-    Main pipeline for classifying spacing issues in dataset.
+    Main processing pipeline.
     
     Args:
-        input_path: Path to input parquet file
-        output_path: Path to output parquet file
+        input_a_path: Path to table A CSV
+        input_b_path: Path to table B CSV
+        input_matches_path: Path to matches CSV
+        prompt_path: Path to prompt template
+        output_path: Path to output CSV
         config: Configuration object
         logger: Logger instance
-        dry_run: If True, process only first 10 rows
+        dry_run: If True, only process first 10 rows
     """
-    logger.info(f"Loading dataset from {input_path}")
-    
-    # Load parquet file
-    try:
-        df = pd.read_parquet(input_path)
-    except Exception as e:
-        logger.error(f"Failed to load input file: {e}")
-        raise
-    
-    # Validate required column
-    if 'question' not in df.columns:
-        raise ValueError("Input file must contain 'question' column")
-    
-    # Handle dry run
-    if dry_run:
-        logger.info("DRY RUN MODE: Processing only first 10 rows")
-        df = df.head(10)
-    
-    total_questions = len(df)
-    logger.info(f"Processing {total_questions} questions")
-    
-    if total_questions == 0:
-        logger.warning("Empty dataset, creating output with all 0s")
-        df['spacing_issues'] = 0
-        df.to_parquet(output_path, index=False)
-        return
-    
-    # Process in batches
-    all_classifications = {}
     start_time = time.time()
     
-    with tqdm(total=total_questions, desc="Classifying questions") as pbar:
-        for batch_start in range(0, total_questions, config.batch_size):
-            batch_end = min(batch_start + config.batch_size, total_questions)
-            batch_questions = df.iloc[batch_start:batch_end]['question'].tolist()
-            
-            batch_results = await process_batch(
-                batch_questions, batch_start, config, logger
-            )
-            
-            all_classifications.update(batch_results)
-            pbar.update(len(batch_questions))
+    # Load and merge data
+    df, columns = load_and_merge_data(
+        input_a_path,
+        input_b_path,
+        input_matches_path,
+        logger,
+        dry_run
+    )
     
-    # Add classification column
-    df['spacing_issues'] = df.index.map(all_classifications)
+    # Load prompt template
+    logger.info(f"Loading prompt template from {prompt_path}")
+    prompt_template = load_prompt_template(prompt_path)
     
-    # Save to output parquet
-    try:
-        df.to_parquet(output_path, index=False)
-        logger.info(f"Successfully saved results to {output_path}")
-    except Exception as e:
-        logger.error(f"Failed to save output file: {e}")
-        raise
+    # Process all records
+    logger.info("Starting explanation generation...")
+    df_with_explanations = await process_all_batches(
+        df,
+        prompt_template,
+        config,
+        logger
+    )
     
-    # Report statistics
+    # Select output columns
+    output_columns = ['ltable_id', 'rtable_id', 'label', 'explanation']
+    df_output = df_with_explanations[output_columns]
+    
+    # Save results
+    logger.info(f"Saving results to {output_path}")
+    df_output.to_csv(output_path, index=False)
+    
     elapsed_time = time.time() - start_time
-    spacing_issues_count = (df['spacing_issues'] == 1).sum()
-    failed_count = (df['spacing_issues'] == -1).sum()
-    
-    logger.info("\n" + "="*60)
-    logger.info("CLASSIFICATION COMPLETE")
-    logger.info("="*60)
-    logger.info(f"Total questions processed: {total_questions}")
-    logger.info(f"Spacing issues detected: {spacing_issues_count} ({spacing_issues_count/total_questions*100:.2f}%)")
-    logger.info(f"Failed classifications: {failed_count} ({failed_count/total_questions*100:.2f}%)")
-    logger.info(f"Processing time: {elapsed_time:.2f} seconds")
-    logger.info(f"Average time per request: {elapsed_time/total_questions:.2f} seconds")
-    logger.info("="*60)
-
-
-# ============================================================================
-# Validation Functions
-# ============================================================================
-
-def validate_output(output_path: str, original_row_count: int, logger: logging.Logger) -> bool:
-    """
-    Validate the output parquet file.
-    
-    Args:
-        output_path: Path to output file
-        original_row_count: Expected number of rows
-        logger: Logger instance
-        
-    Returns:
-        True if validation passes, False otherwise
-    """
-    try:
-        df = pd.read_parquet(output_path)
-        
-        # Check row count
-        if len(df) != original_row_count:
-            logger.error(f"Row count mismatch: expected {original_row_count}, got {len(df)}")
-            return False
-        
-        # Check for spacing_issues column
-        if 'spacing_issues' not in df.columns:
-            logger.error("Missing 'spacing_issues' column")
-            return False
-        
-        # Check valid values
-        valid_values = df['spacing_issues'].isin([0, 1, -1]).all()
-        if not valid_values:
-            logger.error("Invalid values in 'spacing_issues' column")
-            return False
-        
-        logger.info("Output validation passed")
-        return True
-        
-    except Exception as e:
-        logger.error(f"Validation failed: {e}")
-        return False
-
-
-def display_sample_results(df: pd.DataFrame, n: int = 10) -> None:
-    """
-    Display random samples for manual verification.
-    
-    Args:
-        df: DataFrame with classifications
-        n: Number of samples to display
-    """
-    print("\n" + "="*80)
-    print("SAMPLE RESULTS FOR MANUAL VERIFICATION")
-    print("="*80)
-    
-    sample = df.sample(min(n, len(df)))
-    
-    for idx, row in sample.iterrows():
-        label = row.get('spacing_issues', -1)
-        label_str = {0: "NO ISSUES", 1: "SPACING ISSUES", -1: "FAILED"}[label]
-        
-        print(f"\n[{label_str}] Question:")
-        print(f"  {row['question'][:200]}...")
-        print(f"  (Index: {idx})")
-    
-    print("\n" + "="*80)
-
-
-# ============================================================================
-# Testing Functions
-# ============================================================================
-
-def test_classifier():
-    """Run unit tests on key functions."""
-    print("\n" + "="*60)
-    print("RUNNING UNIT TESTS")
-    print("="*60)
-    
-    # Test prompt construction
-    print("\nTesting prompt construction:")
-    test_question = "Whatisthebasicunit"
-    messages = build_classification_prompt(test_question)
-    assert len(messages) == 2, "Should have system and user messages"
-    assert messages[0]["role"] == "system", "First message should be system"
-    assert messages[1]["role"] == "user", "Second message should be user"
-    assert test_question in messages[1]["content"], "Question should be in user message"
-    print("  ✓ Prompt construction working correctly")
-    
-    print("\nNote: Response parsing is now handled by vLLM structured outputs")
-    print("  ✓ Using guided_choice=['0', '1'] for guaranteed binary response")
-    
-    print("\n" + "="*60)
-    print("UNIT TESTS COMPLETE")
-    print("="*60)
-
+    logger.info(f"Processing complete in {elapsed_time:.2f} seconds")
+    logger.info(f"Generated {len(df_output)} explanations")
 
 # ============================================================================
 # CLI Interface
@@ -469,70 +435,25 @@ def test_classifier():
 def parse_args():
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
-        description="Classify spacing issues in MMLU-ProX questions using local LLM"
+        description="Generate explanation-augmented entity matching data using local LLM",
     )
     
     parser.add_argument(
-        "--input",
+        "--config",
         required=True,
-        help="Path to input parquet file"
-    )
-    
-    parser.add_argument(
-        "--output",
-        required=True,
-        help="Path to output parquet file"
-    )
-    
-    parser.add_argument(
-        "--endpoint",
-        default="http://localhost:8000/v1",
-        help="vLLM endpoint URL (default: http://localhost:8000/v1)"
-    )
-    
-    parser.add_argument(
-        "--model",
-        default="meta-llama/Llama-3.1-8B-Instruct",
-        help="Model name (default: meta-llama/Llama-3.1-8B-Instruct)"
-    )
-    
-    parser.add_argument(
-        "--batch-size",
-        type=int,
-        default=50,
-        help="Batch size for processing (default: 50)"
-    )
-    
-    parser.add_argument(
-        "--max-concurrent",
-        type=int,
-        default=10,
-        help="Maximum concurrent requests (default: 10)"
-    )
-    
-    parser.add_argument(
-        "--timeout",
-        type=int,
-        default=30,
-        help="Request timeout in seconds (default: 30)"
+        help="Path to YAML configuration file"
     )
     
     parser.add_argument(
         "--verbose",
         action="store_true",
-        help="Enable verbose logging"
+        help="Enable verbose logging (overrides config file)"
     )
     
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Process only first 10 rows for testing"
-    )
-    
-    parser.add_argument(
-        "--test",
-        action="store_true",
-        help="Run unit tests and exit"
+        help="Process only first 10 rows for testing (overrides config file)"
     )
     
     return parser.parse_args()
@@ -546,58 +467,64 @@ async def main():
     """Main entry point for the script."""
     args = parse_args()
     
-    # Run tests if requested
-    if args.test:
-        test_classifier()
+    # Validate config file exists
+    if not Path(args.config).exists():
+        print(f"Error: Configuration file not found: {args.config}")
+        return
+    
+    # Load configuration from YAML
+    try:
+        config = Config.from_yaml(
+            args.config,
+            verbose=args.verbose if args.verbose else None,
+            dry_run=args.dry_run if args.dry_run else None
+        )
+    except Exception as e:
+        print(f"Error loading configuration: {e}")
         return
     
     # Setup logging
-    logger = setup_logging(args.verbose)
+    input_name = Path(config.input_A).stem if config.input_A else "default"
+    logger = setup_logging(verbose=config.verbose, 
+                           input_name=input_name)
     
-    # Create configuration
-    config = Config(
-        vllm_endpoint=args.endpoint,
-        model_name=args.model,
-        batch_size=args.batch_size,
-        max_concurrent=args.max_concurrent,
-        timeout=args.timeout,
-    )
-    
-    logger.info("Starting MMLU-ProX Spacing Issue Classifier")
+    logger.info(f"Starting EA Data Generation ({input_name})")
+    logger.info(f"Configuration loaded from: {args.config}")
     logger.info(f"Configuration: {config}")
     
-    # Validate input file exists
-    if not Path(args.input).exists():
-        logger.error(f"Input file not found: {args.input}")
+    # Validate input files exist
+    if not Path(config.input_A).exists():
+        logger.error(f"Input A file not found: {config.input_A}")
+        return
+    elif not Path(config.input_B).exists():
+        logger.error(f"Input B file not found: {config.input_B}")
+        return
+    elif not Path(config.input_matches).exists():
+        logger.error(f"Input matches file not found: {config.input_matches}")
         return
     
-    # Get original row count for validation
-    original_df = pd.read_parquet(args.input)
-    original_row_count = len(original_df)
+    if config.prompt and not Path(config.prompt).exists():
+        logger.error(f"Prompt file not found: {config.prompt}")
+        return
     
-    # Run classification
+    # Run generation
     try:
-        await classify_dataset(
-            args.input,
-            args.output,
-            config,
-            logger,
-            dry_run=args.dry_run
+        await run_generation(
+            input_a_path=config.input_A,
+            input_b_path=config.input_B,
+            input_matches_path=config.input_matches,
+            prompt_path=config.prompt,
+            output_path=config.output,
+            config=config,
+            logger=logger,
+            dry_run=config.dry_run
         )
+        
     except Exception as e:
-        logger.error(f"Classification failed: {e}")
+        logger.error(f"Generation failed: {e}")
         raise
     
-    # Validate output
-    if not args.dry_run:
-        validate_output(args.output, original_row_count, logger)
-    
-    # # Display sample results
-    # output_df = pd.read_parquet(args.output)
-    # display_sample_results(output_df, n=10)
-    
-    logger.info("Classification complete!")
-
+    logger.info("Generation complete!")
 
 if __name__ == "__main__":
     asyncio.run(main())
