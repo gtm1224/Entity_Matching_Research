@@ -17,7 +17,7 @@ import time
 import yaml
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Any
+from typing import Dict, List, Tuple, Any
 import aiohttp
 import pandas as pd
 from tqdm import tqdm
