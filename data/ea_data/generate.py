@@ -176,8 +176,6 @@ async def generate_explanation(
         "max_tokens": config.max_new_tokens,
         "top_k": config.topk,
         "top_p": config.topp,
-        "temperature": config.temperature,
-        "stop": ["</s>", "\n\n"]
     }
     
     try:
