@@ -21,6 +21,7 @@ from typing import Dict, List, Tuple, Optional, Any
 import aiohttp
 import pandas as pd
 from tqdm import tqdm
+import csv
 
 # ============================================================================
 # Configuration
@@ -187,6 +188,7 @@ async def generate_explanation(
             if response.status == 200:
                 result = await response.json()
                 explanation = result['choices'][0]['text'].strip()
+                explanation = ' '.join(explanation.split()) # normalize whitespace to keep explanations single-line
                 return explanation
             else:
                 error_text = await response.text()
@@ -412,13 +414,11 @@ async def run_generation(
     output_columns = ['ltable_id', 'rtable_id', 'label', 'explanation']
     df_output = df_with_explanations[output_columns]
     
-    # Save results
+    # Save results to CSV
     logger.info(f"Saving results to {output_path}")
-    df_output.to_csv(output_path, index=False)
-    
-    elapsed_time = time.time() - start_time
-    logger.info(f"Processing complete in {elapsed_time:.2f} seconds")
-    logger.info(f"Generated {len(df_output)} explanations")
+    df_output.head(0).to_csv(output_path, index=False, quoting=csv.QUOTE_MINIMAL) # write header first
+    df_output.to_csv(output_path, index=False, mode='a', header=False, quoting=csv.QUOTE_NONNUMERIC) # append data with quoting handled
+    logger.info(f"Successfully saved {len(df_output)} rows to {output_path}")
 
 # ============================================================================
 # CLI Interface
