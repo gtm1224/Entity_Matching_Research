@@ -167,16 +167,16 @@ async def generate_explanation(
     Returns:
         Generated explanation or empty string on failure
     """
-    url = f"{config.vllm_endpoint}/completions"
+    url = f"{config.endpoint}/completions"
     
     payload = {
-        "model": config.model_name,
+        "model": config.model,
         "prompt": prompt,
         "min_tokens": config.min_new_tokens,
         "max_tokens": config.max_new_tokens,
         "top_k": config.topk,
         "top_p": config.topp,
-        "temperature": 0.7,
+        "temperature": config.temperature,
         "stop": ["</s>", "\n\n"]
     }
     
@@ -191,7 +191,8 @@ async def generate_explanation(
                 explanation = result['choices'][0]['text'].strip()
                 return explanation
             else:
-                logger.warning(f"Request failed with status {response.status}")
+                error_text = await response.text()
+                logger.warning(f"Request failed with status {response.status}: {error_text}")
                 if retry_count < config.max_retries:
                     await asyncio.sleep(2 ** retry_count)  # Exponential backoff
                     return await generate_explanation(session, prompt, config, logger, retry_count + 1)
@@ -455,6 +456,12 @@ def parse_args():
         help="Display the complete prompt for the first element and exit"
     )
     
+    parser.add_argument(
+        "--verify-endpoint",
+        action="store_true",
+        help="Send prompt to vLLM endpoint and display response (requires --verify-prompt)"
+    )
+    
     return parser.parse_args()
 
 
@@ -477,7 +484,8 @@ async def main():
             args.config,
             verbose=args.verbose if args.verbose else None,
             dry_run=args.dry_run if args.dry_run else None,
-            verify_prompt=args.verify_prompt if args.verify_prompt else None
+            verify_prompt=args.verify_prompt if args.verify_prompt else None,
+            verify_endpoint=args.verify_endpoint if args.verify_endpoint else None
         )
     except Exception as e:
         print(f"Error loading configuration: {e}")
@@ -505,6 +513,11 @@ async def main():
     
     if config.prompt and not Path(config.prompt).exists():
         logger.error(f"Prompt file not found: {config.prompt}")
+        return
+    
+    # Validate verify_endpoint requires verify_prompt
+    if config.verify_endpoint and not config.verify_prompt:
+        logger.error("--verify-endpoint requires --verify-prompt to be set")
         return
     
     # Handle verify_prompt mode
@@ -550,6 +563,34 @@ async def main():
         print("="*80)
         print(complete_prompt)
         print("="*80 + "\n")
+        
+        # Handle verify_endpoint mode
+        if config.verify_endpoint:
+            logger.info("VERIFY ENDPOINT MODE: Sending prompt to vLLM and displaying response")
+            
+            async with aiohttp.ClientSession() as session:
+                try:
+                    explanation = await generate_explanation(
+                        session,
+                        complete_prompt,
+                        config,
+                        logger
+                    )
+                    
+                    print("\n" + "="*80)
+                    print("VLLM RESPONSE")
+                    print("="*80)
+                    if explanation:
+                        print(explanation)
+                    else:
+                        print("(No response or empty response)")
+                    print("="*80 + "\n")
+                    
+                    logger.info("Endpoint verification complete")
+                    
+                except Exception as e:
+                    logger.error(f"Endpoint verification failed: {e}")
+                    print(f"\nERROR: Failed to connect to endpoint: {e}\n")
         
         return
     
