@@ -99,7 +99,9 @@ def load_prompt_template(prompt_path: str) -> str:
         Prompt template string
     """
     with open(prompt_path, 'r') as f:
-        return f.read().strip()
+        template = f.read().strip()
+    logging.getLogger(__name__).debug(f"Loaded prompt template with {len(template)} characters")
+    return template
 
 
 def format_entity_row(row: pd.Series, suffix: str, base_columns: List[str], column_mapping: Dict[str, str]) -> str:
@@ -142,7 +144,9 @@ def create_prompt(prompt_template: str, row: pd.Series, base_columns: List[str],
     entity_a = format_entity_row(row, '_a', base_columns, column_mapping)
     entity_b = format_entity_row(row, '_b', base_columns, column_mapping)
     
-    return f"{prompt_template}\nEntity A: {entity_a}\nEntity B: {entity_b}\nLabel: {label}\nExplanation: "
+    prompt = f"{prompt_template}\nEntity A: {entity_a}\nEntity B: {entity_b}\nLabel: {label}\nExplanation: "
+    logging.getLogger(__name__).debug(f"Created prompt with {len(prompt)} characters for label={label}")
+    return prompt
 
 # ============================================================================
 # Async Request Handler
@@ -179,6 +183,8 @@ async def generate_explanation(
         "top_p": config.topp,
     }
     
+    logger.debug(f"Sending request to {url} (retry={retry_count})")
+    
     try:
         async with session.post(
             url,
@@ -189,6 +195,8 @@ async def generate_explanation(
                 result = await response.json()
                 explanation = result['choices'][0]['text'].strip()
                 explanation = ' '.join(explanation.split()) # normalize whitespace to keep explanations single-line
+                
+                logger.debug(f"Received explanation with {len(explanation)} characters")
                 
                 # Retry if explanation is empty (up to 3 attempts total)
                 if not explanation and retry_count < 2:
@@ -243,6 +251,8 @@ async def process_batch(
     Returns:
         List of (index, explanation) tuples
     """
+    logger.debug(f"Processing batch of {len(batch_data)} items")
+    
     async def process_single(idx: int, prompt: str) -> Tuple[int, str]:
         async with semaphore:
             explanation = await generate_explanation(session, prompt, config, logger)
@@ -250,6 +260,7 @@ async def process_batch(
     
     tasks = [process_single(idx, prompt) for idx, prompt in batch_data]
     results = await asyncio.gather(*tasks)
+    logger.debug(f"Completed batch of {len(batch_data)} items")
     return results
 
 
@@ -341,6 +352,7 @@ def load_and_merge_data(
     
     # Get base column names (excluding 'id')
     base_columns = [col for col in df_a.columns if col != 'id']
+    logger.debug(f"Base columns: {base_columns}")
     
     # Merge data
     df_merged = df_matches.copy()
@@ -362,6 +374,7 @@ def load_and_merge_data(
     ).drop(columns=['id'])
     
     logger.info(f"Merged {len(df_merged)} records for processing")
+    logger.debug(f"Merged dataframe shape: {df_merged.shape}")
     
     return df_merged, base_columns
 
@@ -409,6 +422,7 @@ async def run_generation(
     
     # Process all records
     logger.info("Starting explanation generation...")
+    logger.debug(f"Concurrency: {config.max_concurrent}, Batch size: {config.batch_size}")
     df_with_explanations = await process_all_batches(
         df,
         prompt_template,
@@ -421,11 +435,19 @@ async def run_generation(
     output_columns = ['ltable_id', 'rtable_id', 'label', 'explanation']
     df_output = df_with_explanations[output_columns]
     
+    # Check for empty explanations
+    empty_count = (df_output['explanation'] == '').sum()
+    if empty_count > 0:
+        logger.warning(f"Found {empty_count} empty explanations in output")
+    
     # Save results to CSV
     logger.info(f"Saving results to {output_path}")
     df_output.head(0).to_csv(output_path, index=False, quoting=csv.QUOTE_MINIMAL) # write header first
     df_output.to_csv(output_path, index=False, mode='a', header=False, quoting=csv.QUOTE_NONNUMERIC) # append data with quoting handled
     logger.info(f"Successfully saved {len(df_output)} rows to {output_path}")
+    
+    elapsed = time.time() - start_time
+    logger.debug(f"Total processing time: {elapsed:.2f} seconds ({elapsed/len(df_output):.2f}s per row)")
 
 # ============================================================================
 # CLI Interface
