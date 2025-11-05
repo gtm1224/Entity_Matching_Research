@@ -1,4 +1,4 @@
-# Configuration for EA Data Generator
+# Configuration for EA Data Generator - Beer Dataset
 
 # Input files (required)
 input_A: /home/danielruiz/workspace/phd/Entity_Matching_Research/data/Beer/tableA.csv
@@ -6,6 +6,14 @@ input_B: /home/danielruiz/workspace/phd/Entity_Matching_Research/data/Beer/table
 input_matches: /home/danielruiz/workspace/phd/Entity_Matching_Research/data/Beer/train.csv
 prompt: /home/danielruiz/workspace/phd/Entity_Matching_Research/data/ea_data/prompts/beer.txt
 output: /home/danielruiz/workspace/phd/Entity_Matching_Research/data/ea_data/beer_train_ea.csv
+
+# Column mapping: maps dataset column names to prompt template tags
+# Format: dataset_column_name -> PROMPT_TAG_NAME
+column_mapping:
+  beer_name: NAME
+  brew_factory_name: MANUFACTURER
+  style: STYLE
+  abv: ABV
 
 # vLLM configuration
 endpoint: http://localhost:8000/v1
@@ -27,3 +35,4 @@ temperature: 0.7
 # Optional flags
 verbose: false
 dry_run: false
+verify_prompt: false

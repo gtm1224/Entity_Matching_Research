@@ -101,7 +101,7 @@ def load_prompt_template(prompt_path: str) -> str:
         return f.read().strip()
 
 
-def format_entity_row(row: pd.Series, suffix: str, base_columns: List[str]) -> str:
+def format_entity_row(row: pd.Series, suffix: str, base_columns: List[str], column_mapping: Dict[str, str]) -> str:
     """
     Format an entity row as a string with column names and values.
     
@@ -109,6 +109,7 @@ def format_entity_row(row: pd.Series, suffix: str, base_columns: List[str]) -> s
         row: DataFrame row
         suffix: Column suffix ('_a' or '_b')
         base_columns: Base column names (without suffix)
+        column_mapping: Dictionary mapping column names to prompt tags
         
     Returns:
         Formatted entity string like "[NAME] value [MANUFACTURER] value ..."
@@ -117,12 +118,13 @@ def format_entity_row(row: pd.Series, suffix: str, base_columns: List[str]) -> s
     for col in base_columns:
         col_with_suffix = f"{col}{suffix}"
         if col_with_suffix in row.index:
-            col_name_upper = col.upper().replace('_', ' ')
-            parts.append(f"[{col_name_upper}] {row[col_with_suffix]}")
+            # Use mapped tag name if available, otherwise use column name
+            tag_name = column_mapping.get(col.lower(), col).upper().replace('_', ' ')
+            parts.append(f"[{tag_name}] {row[col_with_suffix]}")
     return " ".join(parts)
 
 
-def create_prompt(prompt_template: str, row: pd.Series, base_columns: List[str], label: str) -> str:
+def create_prompt(prompt_template: str, row: pd.Series, base_columns: List[str], label: str, column_mapping: Dict[str, str]) -> str:
     """
     Create a complete prompt by appending the current example to the template.
     
@@ -131,12 +133,13 @@ def create_prompt(prompt_template: str, row: pd.Series, base_columns: List[str],
         row: DataFrame row with both _a and _b columns
         base_columns: Base column names (without suffix)
         label: "MATCH" or "NOT A MATCH"
+        column_mapping: Dictionary mapping column names to prompt tags
         
     Returns:
         Complete prompt for generation
     """
-    entity_a = format_entity_row(row, '_a', base_columns)
-    entity_b = format_entity_row(row, '_b', base_columns)
+    entity_a = format_entity_row(row, '_a', base_columns, column_mapping)
+    entity_b = format_entity_row(row, '_b', base_columns, column_mapping)
     
     return f"{prompt_template}\nEntity A: {entity_a}\nEntity B: {entity_b}\nLabel: {label}\nExplanation: "
 
@@ -262,11 +265,14 @@ async def process_all_batches(
     Returns:
         DataFrame with explanations added
     """
+    # Get column mapping from config, default to empty dict
+    column_mapping = config.column_mapping if config.column_mapping else {}
+    
     # Prepare all prompts
     prompts = []
     for idx, row in df.iterrows():
         label = "MATCH" if row['label'] == 1 else "NOT A MATCH"
-        prompt = create_prompt(prompt_template, row, base_columns, label)
+        prompt = create_prompt(prompt_template, row, base_columns, label, column_mapping)
         prompts.append((idx, prompt))
     
     # Create semaphore for concurrency control
@@ -392,18 +398,16 @@ async def run_generation(
     # Load prompt template
     logger.info(f"Loading prompt template from {prompt_path}")
     prompt_template = load_prompt_template(prompt_path)
-
-    print(prompt_template)
     
-    # # Process all records
-    # logger.info("Starting explanation generation...")
-    # df_with_explanations = await process_all_batches(
-    #     df,
-    #     prompt_template,
-    #     base_columns,
-    #     config,
-    #     logger
-    # )
+    # Process all records
+    logger.info("Starting explanation generation...")
+    df_with_explanations = await process_all_batches(
+        df,
+        prompt_template,
+        base_columns,
+        config,
+        logger
+    )
     
     # # Select output columns
     # output_columns = ['ltable_id', 'rtable_id', 'label', 'explanation']
@@ -445,6 +449,12 @@ def parse_args():
         help="Process only first 10 rows for testing (overrides config file)"
     )
     
+    parser.add_argument(
+        "--verify-prompt",
+        action="store_true",
+        help="Display the complete prompt for the first element and exit"
+    )
+    
     return parser.parse_args()
 
 
@@ -466,7 +476,8 @@ async def main():
         config = Config.from_yaml(
             args.config,
             verbose=args.verbose if args.verbose else None,
-            dry_run=args.dry_run if args.dry_run else None
+            dry_run=args.dry_run if args.dry_run else None,
+            verify_prompt=args.verify_prompt if args.verify_prompt else None
         )
     except Exception as e:
         print(f"Error loading configuration: {e}")
@@ -494,6 +505,52 @@ async def main():
     
     if config.prompt and not Path(config.prompt).exists():
         logger.error(f"Prompt file not found: {config.prompt}")
+        return
+    
+    # Handle verify_prompt mode
+    if config.verify_prompt:
+        logger.info("VERIFY PROMPT MODE: Displaying first prompt and exiting")
+        
+        # Load data (just first row)
+        df_matches = pd.read_csv(config.input_matches).head(1)
+        df_a = pd.read_csv(config.input_A)
+        df_b = pd.read_csv(config.input_B)
+        
+        base_columns = [col for col in df_a.columns if col != 'id']
+        
+        # Merge first row
+        df_merged = df_matches.merge(
+            df_a,
+            left_on='ltable_id',
+            right_on='id',
+            suffixes=('', '_a')
+        ).drop(columns=['id'])
+        
+        df_merged = df_merged.merge(
+            df_b,
+            left_on='rtable_id',
+            right_on='id',
+            suffixes=('_a', '_b')
+        ).drop(columns=['id'])
+        
+        # Load prompt template
+        prompt_template = load_prompt_template(config.prompt)
+        
+        # Get column mapping from config
+        column_mapping = config.column_mapping if config.column_mapping else {}
+        
+        # Create prompt for first row
+        first_row = df_merged.iloc[0]
+        label = "MATCH" if first_row['label'] == 1 else "NOT A MATCH"
+        complete_prompt = create_prompt(prompt_template, first_row, base_columns, label, column_mapping)
+        
+        # Display with clear formatting
+        print("\n" + "="*80)
+        print("COMPLETE PROMPT FOR FIRST ELEMENT")
+        print("="*80)
+        print(complete_prompt)
+        print("="*80 + "\n")
+        
         return
     
     # Run generation
