@@ -71,18 +71,23 @@ def setup_logging(verbose: bool = False,
     Returns:
         Configured logger instance
     """
-    level = logging.DEBUG if verbose else logging.INFO
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG if verbose else logging.INFO)
     
-    logging.basicConfig(
-        level=level,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(f'generate_{input_name}.log'),
-            logging.StreamHandler()
-        ]
-    )
+    # File handler - always logs DEBUG and above if verbose
+    file_handler = logging.FileHandler(f'generate_{input_name}.log')
+    file_handler.setLevel(logging.DEBUG if verbose else logging.INFO)
+    file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
     
-    return logging.getLogger(__name__)
+    # Console handler - only INFO and above (never DEBUG)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+    
+    return logger
 
 # ============================================================================
 # Prompt Engineering
@@ -195,8 +200,6 @@ async def generate_explanation(
                 result = await response.json()
                 explanation = result['choices'][0]['text'].strip()
                 explanation = ' '.join(explanation.split()) # normalize whitespace to keep explanations single-line
-                
-                logger.debug(f"Received explanation with {len(explanation)} characters")
                 
                 # Retry if explanation is empty (up to 3 attempts total)
                 if not explanation and retry_count < 2:
