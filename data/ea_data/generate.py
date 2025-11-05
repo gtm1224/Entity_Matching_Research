@@ -189,6 +189,13 @@ async def generate_explanation(
                 result = await response.json()
                 explanation = result['choices'][0]['text'].strip()
                 explanation = ' '.join(explanation.split()) # normalize whitespace to keep explanations single-line
+                
+                # Retry if explanation is empty (up to 3 attempts total)
+                if not explanation and retry_count < 2:
+                    logger.warning(f"Empty explanation received, retrying (attempt {retry_count + 2}/3)")
+                    await asyncio.sleep(1)
+                    return await generate_explanation(session, prompt, config, logger, retry_count + 1)
+                
                 return explanation
             else:
                 error_text = await response.text()
