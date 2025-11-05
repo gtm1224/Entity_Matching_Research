@@ -1,0 +1,35 @@
+# Configuration for EA Data Generator - Shoes Dataset
+
+# Input files (required)
+input_A: /home/danielruiz/workspace/phd/Entity_Matching_Research/data/shoes/tableA.csv
+input_B: /home/danielruiz/workspace/phd/Entity_Matching_Research/data/shoes/tableB.csv
+input_matches: /home/danielruiz/workspace/phd/Entity_Matching_Research/data/shoes/train.csv
+prompt: /home/danielruiz/workspace/phd/Entity_Matching_Research/data/ea_data/prompts/shoes.txt
+output: /home/danielruiz/workspace/phd/Entity_Matching_Research/data/ea_data/shoes_train_ea.csv
+
+# Column mapping: maps dataset column names to prompt template tags
+# Format: dataset_column_name -> PROMPT_TAG_NAME
+column_mapping:
+  name: NAME
+
+# vLLM configuration
+endpoint: http://localhost:8000/v1
+model: mistralai/Mistral-7B-Instruct-v0.1
+
+# Processing parameters
+batch_size: 50
+max_concurrent: 10
+timeout: 30
+max_retries: 3
+
+# Generation parameters
+min_new_tokens: 5
+max_new_tokens: 128
+topk: 50
+topp: 0.95
+temperature: 0.7
+
+# Optional flags
+verbose: false
+dry_run: false
+verify_prompt: false

@@ -1,0 +1,9 @@
+<s> [INST]Given the following two examples, provide an explanation for the third example for why the two entities do or do not match.[/INST]
+Entity A: [NAME] Nike Sportswear Air Force 1 - Midnight Navy’en Mens Shoes Nike Navy 488298-436 en
+Entity B: [NAME] "Nike Air Force 1 ’07 Low midnight navy / white (488298-436)"eu (488298-436) | Bludshop.com" eu
+Label: MATCH
+Explanation: Both entities refer to Nike Air Force shoes, navy in color with the same model number 488298-436, therefore they’re a match.</s>
+Entity A: [NAME] "Air Jordan 14 Retro Low “Laney” Varsity Royal/Varsity Maize-Black-White For Sale"en-US Sale | Cheap Jordans 2017"en-US
+Entity B: [NAME] "Cheap Air Jordan 4 Retro “Motorsports” White/Varsity Blue-Black Sale"en-US Sale | Cheap Jordans 2017"en-US
+Label: NOT A MATCH
+Explanation: While both entities refer to cheap Air Jordan shoes, Entity A is a Laney version which is Maize-Black-White in color, while Entity B is a Motorsports version which is Blue-Black in color, therefore they are not a match.</s>

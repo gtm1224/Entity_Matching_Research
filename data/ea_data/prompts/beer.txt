@@ -1,0 +1,9 @@
+<s> [INST] Given the following two examples, provide an explanation for the third example for why the two entities do or do not match.[/INST]
+Entity A: [NAME] Honey Basil Amber [MANUFACTURER] Rude Hippo Brewing Company [STYLE] American Amber / Red Ale [ABV] 7.40
+Entity B: [NAME] Rude Hippo Honey Basil Amber [MANUFACTURER] 18th Street Brewery [STYLE] Amber Ale [ABV] 7.40
+Label: MATCH
+Explanation: Both entities refer to Honey Basil Amber beer with the same ABV, therefore they’re a match.</s>
+Entity A: [NAME] Brew Kahuna NW Red Ale [MANUFACTURER] Sky High Brewing [STYLE] American Amber / Red Ale [ABV] 5.20
+Entity B: [NAME] Brew Bus Detour Series : Rollin Dirty Red Ale - Wood Aged [MANUFACTURER] Cigar City Brewing [STYLE] Irish Ale [ABV] 5
+Label: NOT A MATCH
+Explanation: Entity A refers to Beer manufactured by Sky High Brewing while Entity B refers to Beer manufactured by Cigar City Brewing, and they have different names, therefore they are not a match.</s>

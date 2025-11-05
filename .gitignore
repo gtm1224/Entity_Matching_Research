@@ -11,3 +11,6 @@
 
 # Keep the .gitignore file itself
 !.gitignore
+
+# ignore log files
+*.log
