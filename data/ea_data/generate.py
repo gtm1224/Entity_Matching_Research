@@ -410,17 +410,17 @@ async def run_generation(
         logger
     )
     
-    # # Select output columns
-    # output_columns = ['ltable_id', 'rtable_id', 'label', 'explanation']
-    # df_output = df_with_explanations[output_columns]
+    # Select output columns
+    output_columns = ['ltable_id', 'rtable_id', 'label', 'explanation']
+    df_output = df_with_explanations[output_columns]
     
-    # # Save results
-    # logger.info(f"Saving results to {output_path}")
-    # df_output.to_csv(output_path, index=False)
+    # Save results
+    logger.info(f"Saving results to {output_path}")
+    df_output.to_csv(output_path, index=False)
     
-    # elapsed_time = time.time() - start_time
-    # logger.info(f"Processing complete in {elapsed_time:.2f} seconds")
-    # logger.info(f"Generated {len(df_output)} explanations")
+    elapsed_time = time.time() - start_time
+    logger.info(f"Processing complete in {elapsed_time:.2f} seconds")
+    logger.info(f"Generated {len(df_output)} explanations")
 
 # ============================================================================
 # CLI Interface

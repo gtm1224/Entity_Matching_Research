@@ -1,4 +1,4 @@
-<s>[INST] Given the following two examples, provide an explanation for the third example for why the two entities do or do not match. [\INST]
+<s>[INST] Given the following two examples, provide an explanation for the third example for why the two entities do or do not match. [/INST]
 Entity A: [NAME] samsung dlp tv stand in black tr72bx [DESCRIPTION] samsung dlp tv stand in black tr72bx designed to fit samsung hlt7288 hlt7288 , hl72a650 , and hl67a650 television sets tempered 6mm tinted glass shelves wide audio storage shelves to accommodate 4 or more components wire management system easy to assemble high gloss black finish [PRICE] 369.0
 Entity B: [NAME] samsung tr72b tv stand [DESCRIPTION] glass black [PRICE] 232.14
 Label: MATCH

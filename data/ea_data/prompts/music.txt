@@ -1,4 +1,4 @@
-<s> [INST] Given the following two examples, provide an explanation for the third example for why the two entities do or do not match. [\INST]
+<s> [INST] Given the following two examples, provide an explanation for the third example for why the two entities do or do not match. [/INST]
 Entity A: [SONG_NAME] Extra Extra Credit [ARTIST_NAME] Wiz Khalifa [ALBUM_NAME] Flight School [GENRE] Hip-Hop/Rap , Music [PRICE] 0.99 [COPYRIGHT] 2009 Rostrum Records [TIME] 4:03 [RELEASED] 17-Apr-09
 Entity B: [SONG_NAME] Extra Extra Credit [ Explicit ] [ARTIST_NAME] Wiz Khalifa [ALBUM_NAME] Flight School [ Explicit ] [GENRE] Rap & Hip-Hop [PRICE] 0.99 [COPYRIGHT] 2013 Mad Decent [TIME] 4:03 [RELEASED] April 17 , 2009
 Label: MATCH
