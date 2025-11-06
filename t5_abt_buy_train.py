@@ -33,7 +33,7 @@ def preprocessing_dataset(df, tableA, tableB):
     apply_entity(df, tableA, tableB)
 
 # --- tokenization / metrics ---
-MAX_IN, MAX_OUT = 256, 4
+MAX_IN, MAX_OUT = 256, 10
 
 def preprocess_fn(tokenizer, batch):
     enc = tokenizer(batch["input"], truncation=True, padding="max_length", max_length=MAX_IN)
@@ -135,7 +135,7 @@ if __name__ == '__main__':
     # data collator pads dynamically per batch and sets label padding to -100
     collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, model=model)
     print(tokenized["train"][0])
-    exit()
+    
     # training config
     args = TrainingArguments(
         output_dir="flan_t5_abtbuy_label_only",
@@ -151,8 +151,7 @@ if __name__ == '__main__':
         save_strategy="epoch",
         load_best_model_at_end=True,
         metric_for_best_model="f1",
-        predict_with_generate=True,
-        fp16=False,
+        fp16=False,  # or False if CPU
     )
 
     # trainer
