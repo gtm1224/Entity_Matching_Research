@@ -1,17 +1,18 @@
 from utils import *
 from transformers import (
     T5ForConditionalGeneration, T5TokenizerFast,
-    DataCollatorForSeq2Seq, TrainingArguments, Trainer
+    DataCollatorForSeq2Seq, TrainingArguments, Trainer,Seq2SeqTrainingArguments, Seq2SeqTrainer
 )
 from datasets import Dataset, DatasetDict
 import pandas as pd
 import numpy as np
 from sklearn.metrics import precision_recall_fscore_support, accuracy_score
 import torch
-
+import gc
 
 if __name__ == "__main__":
     if torch.cuda.is_available():
+        gc.collect(); torch.cuda.empty_cache()
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.benchmark = True
         torch.set_float32_matmul_precision("high")
@@ -66,26 +67,32 @@ if __name__ == "__main__":
     collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, model=model)
     print(tokenized["train"][0])
 
+    # model.config.use_cache = False
     # training config
-    args = TrainingArguments(
-        output_dir="flan_t5_abtbuy_label_only",
-        per_device_train_batch_size=4,
-        per_device_eval_batch_size=4,
+    args = Seq2SeqTrainingArguments(
+        output_dir="flan_t5_abtbuy_with_ea",
+        per_device_train_batch_size=8,
+        per_device_eval_batch_size=2,
         gradient_accumulation_steps=1,
         learning_rate=1e-4,
         num_train_epochs=5,
         weight_decay=0.01,
         warmup_ratio=0.05,
         logging_steps=100,
-        eval_strategy="epoch",
+        eval_strategy="no",
         save_strategy="epoch",
-        load_best_model_at_end=True,
+        load_best_model_at_end=False,
         metric_for_best_model="f1",
         fp16=False,  # or False if CPU
+        bf16=True,
+        predict_with_generate=True,           # <<< key: no logits kept
+        generation_max_length=128,
+        generation_num_beams=1,
+        eval_accumulation_steps=32,
     )
 
     # trainer
-    trainer = Trainer(
+    trainer = Seq2SeqTrainer(
         model=model,
         args=args,
         train_dataset=tokenized["train"],
@@ -103,7 +110,7 @@ if __name__ == "__main__":
 
     # quick inference helper
     def predict_label(text: str) -> str:
-        enc = tokenizer(text, return_tensors="pt", truncation=True, max_length=MAX_IN).to(model.device)
+        enc = tokenizer(text,return_tensors="pt", truncation=True, max_length=MAX_IN).to(model.device)
         out = model.generate(**enc, max_new_tokens=MAX_OUT)
         return norm_label(tokenizer.decode(out[0], skip_special_tokens=True))
 

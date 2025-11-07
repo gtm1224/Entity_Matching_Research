@@ -96,7 +96,7 @@ def evaluate_dataset(model, tokenizer, texts, gold_labels=None, device=None,
 
 
 if __name__ == '__main__':
-    base_dir = "./flan_t5_abtbuy_label_only"
+    base_dir = "./flan_t5_abtbuy_with_ea"
     ckpts = sorted(glob.glob(os.path.join(base_dir, "checkpoint-*")),
                key=lambda p: int(p.rsplit("-", 1)[-1]))
     model_dir = ckpts[-1]  # automatically pick latest checkpoint
