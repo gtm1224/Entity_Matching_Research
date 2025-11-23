@@ -43,6 +43,8 @@ def predict_label(text, tokenizer, model,device):
     with torch.no_grad():
         outputs = model.generate(**inputs, max_new_tokens=8)
     pred = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    print("input: ",text)
+    print("pred: ",pred)
     return pred.strip().lower()
 
 def norm_label(s: str) -> str:
@@ -82,6 +84,7 @@ def evaluate_dataset(model, tokenizer, texts, gold_labels=None, device=None,
                         padding=True, max_length=max_in).to(device)
         outs = model.generate(**enc, max_new_tokens=max_out)
         batch_preds = tokenizer.batch_decode(outs, skip_special_tokens=True)
+        # print("batch_preds: ",batch_preds)
         preds.extend(batch_preds)
     preds_norm = [norm_label(p) for p in preds]
     metrics = None
@@ -95,6 +98,18 @@ def evaluate_dataset(model, tokenizer, texts, gold_labels=None, device=None,
     return preds_norm, metrics
 
 
+def get_text_gold_labels_for_evaluation(data,tableA,tableB):
+    preprocessing_dataset_auto(data, tableA, tableB)
+    texts = data["sample"].tolist()
+    gold_labels = data["new_label"].tolist()
+    return texts, gold_labels
+
+def evaluate_dataset_wrapper(model, tokenizer, data, tableA, tableB):
+    texts,gold_labels = get_text_gold_labels_for_evaluation(data,tableA,tableB)
+    preds_norm, metrics = evaluate_dataset(model, tokenizer, texts, gold_labels)
+    print(metrics)
+
+
 if __name__ == '__main__':
     base_dir = "./flan_t5_abtbuy_with_ea"
     ckpts = sorted(glob.glob(os.path.join(base_dir, "checkpoint-*")),
@@ -104,13 +119,55 @@ if __name__ == '__main__':
     print(f"Loading model from {model_dir}")
     model,tokenizer,device = load_trained_t5(model_dir)
 
-    beer_test = pd.read_csv("./data/Beer/test.csv")
-    tableA = pd.read_csv("./data/Beer/tableA.csv").fillna("")
-    tableB = pd.read_csv("./data/Beer/tableB.csv").fillna("")
+    train_dir, valid_dir, test_dir, tableA_dir, tableB_dir, output_dir = get_dir_for_base_model_training("Beer")
+    # print(train_dir, valid_dir, test_dir, tableA_dir, tableB_dir)
+    # exit()
+    pairs_train = pd.read_csv(train_dir)
+    pairs_valid = pd.read_csv(valid_dir)
+    pairs_test = pd.read_csv(test_dir)
+    tableA = pd.read_csv(tableA_dir).fillna("")
+    tableB = pd.read_csv(tableB_dir).fillna("")
 
+    # evaluate using all the train, valid,and test datasets, print out the results, take the minimum F1
     # preprocess dataframes → add 'sample' and 'new_label'
-    preprocessing_dataset_auto(beer_test, tableA, tableB)
-    texts = beer_test["sample"].tolist()
-    gold_labels = beer_test["new_label"].tolist()
-    preds_norm,metrics = evaluate_dataset(model,tokenizer, texts, gold_labels)
+    # preprocessing_dataset_auto(beer_test, tableA, tableB)
+    # texts = beer_test["sample"].tolist()
+    # gold_labels = beer_test["new_label"].tolist()
+    # texts,gold_labels = get_text_gold_labels_for_evaluation(pairs_train,tableA,tableB)
+    # preds_norm,metrics = evaluate_dataset(model,tokenizer, texts, gold_labels)
+    # print(metrics)
+    #
+    # texts, gold_labels = get_text_gold_labels_for_evaluation(pairs_train, tableA, tableB)
+    # preds_norm, metrics = evaluate_dataset(model, tokenizer, texts, gold_labels)
+    # print(metrics)
+    #
+    # texts, gold_labels = get_text_gold_labels_for_evaluation(pairs_train, tableA, tableB)
+    # preds_norm, metrics = evaluate_dataset(model, tokenizer, texts, gold_labels)
+    # print(metrics)
+    total_text = []
+    total_gold_labels = []
+    texts_train,gold_labels_train = get_text_gold_labels_for_evaluation(pairs_train,tableA,tableB)
+    total_text.extend(texts_train)
+    total_gold_labels.extend(gold_labels_train)
+    texts_valid, gold_labels_valid = get_text_gold_labels_for_evaluation(pairs_valid, tableA, tableB)
+    total_text.extend(texts_valid)
+    total_gold_labels.extend(gold_labels_valid)
+    texts_test, gold_labels_test = get_text_gold_labels_for_evaluation(pairs_test, tableA, tableB)
+    total_text.extend(texts_test)
+    total_gold_labels.extend(gold_labels_test)
+
+    preds_norm, metrics = evaluate_dataset(model, tokenizer, total_text, total_gold_labels)
+    print("evaluated on total samples: \n")
     print(metrics)
+
+
+    # evaluation on train, valid, and test separately
+    print("evaluating on train samples: \n")
+    evaluate_dataset_wrapper(model, tokenizer,pairs_train,tableA, tableB)
+    print("evaluating on valid samples: \n")
+    evaluate_dataset_wrapper(model, tokenizer, pairs_valid, tableA, tableB)
+    print("evaluating on test samples: \n")
+    evaluate_dataset_wrapper(model, tokenizer, pairs_test, tableA, tableB)
+
+
+

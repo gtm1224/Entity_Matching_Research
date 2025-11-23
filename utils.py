@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-MAX_IN, MAX_OUT = 256, 4
+# MAX_IN, MAX_OUT = 256, 4
 from sklearn.metrics import precision_recall_fscore_support, accuracy_score
 
 def fmt(x):
@@ -66,7 +66,7 @@ def preprocessing_dataset_auto(df, tableA, tableB):
     apply_label(df)
     apply_entity_auto(df, tableA, tableB)
 
-
+# for EA training
 MAX_IN, MAX_OUT = 256, 128
 
 def preprocess_fn(tokenizer, batch):
@@ -184,3 +184,5 @@ def get_dir_for_base_model_training(folder_name):
     output_dir = "flan_t5"+f"_{folder_name}_base_model"
 
     return train_dir, valid_dir, test_dir, tableA_dir, tableB_dir,output_dir
+
+

@@ -43,6 +43,14 @@ if __name__ == "__main__":
 
     train_dir,valid_dir,test_dir,tableA_dir,tableB_dir,output_dir = get_dir_for_base_model_training("Warlmart-amazon")
     print(output_dir)
+    # to train with ea data, we only need to change the trian_dir
+    train_dir = "./data/ea_data/walmart-amazon_train_ea.csv"
+    output_dir += "_with_ea"
+    # print(output_dir)
+    # print(train_dir)
+    # exit()
+
+
     pairs_train = pd.read_csv(train_dir)
     pairs_valid = pd.read_csv(valid_dir)
     pairs_test = pd.read_csv(test_dir)
