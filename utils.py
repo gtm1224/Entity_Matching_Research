@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 MAX_IN, MAX_OUT = 256, 4
+from sklearn.metrics import precision_recall_fscore_support, accuracy_score
 
 def fmt(x):
     s = str(x).strip()
@@ -114,9 +115,7 @@ def norm_label(s: str) -> str:
 #     return compute_metrics
 # utils.py
 
-import pandas as pd
-import numpy as np
-from sklearn.metrics import precision_recall_fscore_support, accuracy_score
+
 
 def make_compute_metrics(tokenizer):
     pad_id = tokenizer.pad_token_id
@@ -174,3 +173,14 @@ def make_compute_metrics(tokenizer):
         return {"precision": float(p), "recall": float(r), "f1": float(f1), "accuracy": float(acc)}
 
     return compute_metrics
+
+
+def get_dir_for_base_model_training(folder_name):
+    train_dir = f"./data/{folder_name}/train.csv"
+    valid_dir = f"./data/{folder_name}/valid.csv"
+    test_dir = f"./data/{folder_name}/test.csv"
+    tableA_dir = f"./data/{folder_name}/tableA.csv"
+    tableB_dir = f"./data/{folder_name}/tableB.csv"
+    output_dir = "flan_t5"+f"_{folder_name}_base_model"
+
+    return train_dir, valid_dir, test_dir, tableA_dir, tableB_dir,output_dir

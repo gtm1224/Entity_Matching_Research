@@ -21,12 +21,28 @@ if __name__ == "__main__":
         print("⚠️ CUDA not available; running on CPU.")
     pd.set_option('display.max_rows', None)
     pd.set_option('display.max_columns', None)
-    train_dir= "./data/ea_data/abt-buy_train_ea.csv"
-    valid_dir="./data/abt-buy/valid.csv"
-    test_dir= "./data/abt-buy/test.csv"
-    tableA_dir = "./data/abt-buy/tableA.csv"
-    tableB_dir = "./data/abt-buy/tableB.csv"
+    pd.set_option('display.width', 100000)
 
+    # abt-buy fine tune with ea
+    # train_dir= "./data/ea_data/abt-buy_train_ea.csv"
+    # valid_dir="./data/abt-buy/valid.csv"
+    # test_dir= "./data/abt-buy/test.csv"
+    # tableA_dir = "./data/abt-buy/tableA.csv"
+    # tableB_dir = "./data/abt-buy/tableB.csv"
+    # output_dir = "flan_t5_abt-buy_model_with_ea"
+
+
+
+    # walmart-amazon base model training:
+    # train_dir= "./data/Warlmart-amazon/train.csv"
+    # valid_dir="./data/Warlmart-amazon/valid.csv"
+    # test_dir= "./data/abt-buy/test.csv"
+    # tableA_dir = "./data/Warlmart-amazon/tableA.csv"
+    # tableB_dir = "./data/Warlmart-amazon/tableB.csv"
+    # output_dir = "flan_t5_Warlmart-amazon_base_model"
+
+    train_dir,valid_dir,test_dir,tableA_dir,tableB_dir,output_dir = get_dir_for_base_model_training("Warlmart-amazon")
+    print(output_dir)
     pairs_train = pd.read_csv(train_dir)
     pairs_valid = pd.read_csv(valid_dir)
     pairs_test = pd.read_csv(test_dir)
@@ -37,8 +53,10 @@ if __name__ == "__main__":
     preprocessing_dataset_auto(pairs_valid, tableA, tableB)
     preprocessing_dataset_auto(pairs_test, tableA, tableB)
 
+    #pairs_train.to_csv("test.csv", index=False)
 
-    print(pairs_train.head(10))
+    # print(pairs_train.head(10))
+    # exit()
     ds = DatasetDict({
         "train": Dataset.from_dict({
             "input": pairs_train["sample"].tolist(),
@@ -69,8 +87,11 @@ if __name__ == "__main__":
 
     # model.config.use_cache = False
     # training config
+
+    # for small dataset can change save_strategy and eval_strategy to "epoch"
+    # and load_best_model_at_end=True
     args = Seq2SeqTrainingArguments(
-        output_dir="flan_t5_abtbuy_with_ea",
+        output_dir=output_dir,
         per_device_train_batch_size=8,
         per_device_eval_batch_size=2,
         gradient_accumulation_steps=1,
