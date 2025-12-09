@@ -10,7 +10,7 @@ output: /home/danielruiz/workspace/phd/csci-662/Entity_Matching_Research/data/ea
 # Column mapping: maps dataset column names to prompt template tags
 # Format: dataset_column_name -> PROMPT_TAG_NAME
 column_mapping:
-  name: NAME
+  title: NAME
 
 # vLLM configuration
 endpoint: http://localhost:8000/v1
