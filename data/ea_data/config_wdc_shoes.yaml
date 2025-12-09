@@ -1,18 +1,16 @@
-# Configuration for EA Data Generator - CEP Datasets
+# Configuration for EA Data Generator - Shoes Dataset
 
 # Input files (required)
 input_A: /home/danielruiz/workspace/phd/csci-662/Entity_Matching_Research/data/wdc/shoes/tableA.csv
 input_B: /home/danielruiz/workspace/phd/csci-662/Entity_Matching_Research/data/wdc/shoes/tableB.csv
 input_matches: /home/danielruiz/workspace/phd/csci-662/Entity_Matching_Research/data/wdc/shoes/train.csv
-prompt: /home/danielruiz/workspace/phd/csci-662/Entity_Matching_Research/data/ea_data/prompts/shoes.txt
+prompt: /home/danielruiz/workspace/phd/csci-662/Entity_Matching_Research/data/ea_data/prompts/wdc.txt
 output: /home/danielruiz/workspace/phd/csci-662/Entity_Matching_Research/data/ea_data/shoes_train_ea.csv
 
 # Column mapping: maps dataset column names to prompt template tags
 # Format: dataset_column_name -> PROMPT_TAG_NAME
 column_mapping:
   name: NAME
-  description: DESCRIPTION
-  price: PRICE
 
 # vLLM configuration
 endpoint: http://localhost:8000/v1

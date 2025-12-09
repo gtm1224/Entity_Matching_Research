@@ -1,11 +1,11 @@
 # Configuration for EA Data Generator - Music Dataset
 
 # Input files (required)
-input_A: /home/danielruiz/workspace/phd/Entity_Matching_Research/data/Itunes-amazon/tableA.csv
-input_B: /home/danielruiz/workspace/phd/Entity_Matching_Research/data/Itunes-amazon/tableB.csv
-input_matches: /home/danielruiz/workspace/phd/Entity_Matching_Research/data/Itunes-amazon/train.csv
-prompt: /home/danielruiz/workspace/phd/Entity_Matching_Research/data/ea_data/prompts/music.txt
-output: /home/danielruiz/workspace/phd/Entity_Matching_Research/data/ea_data/itunes-amazon_train_ea.csv
+input_A: /home/danielruiz/workspace/phd/csci-662/ntity_Matching_Research/data/Itunes-amazon/tableA.csv
+input_B: /home/danielruiz/workspace/phd/csci-662/Entity_Matching_Research/data/Itunes-amazon/tableB.csv
+input_matches: /home/danielruiz/workspace/phd/csci-662/Entity_Matching_Research/data/Itunes-amazon/train.csv
+prompt: /home/danielruiz/workspace/phd/csci-662/Entity_Matching_Research/data/ea_data/prompts/music.txt
+output: /home/danielruiz/workspace/phd/csci-662/Entity_Matching_Research/data/ea_data/itunes-amazon_train_ea.csv
 
 # Column mapping: maps dataset column names to prompt template tags
 # Format: dataset_column_name -> PROMPT_TAG_NAME
