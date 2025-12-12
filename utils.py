@@ -176,12 +176,20 @@ def make_compute_metrics(tokenizer):
 
 
 def get_dir_for_base_model_training(folder_name):
+    if folder_name.startswith("wdc"):
+        wdc_name = folder_name.split("-")
+        output_dir = "flan_t5" + f"_{folder_name}_base_model"
+        folder_name = f"{wdc_name[0]}/{wdc_name[1]}"
+    else:
+        output_dir = "flan_t5" + f"_{folder_name}_base_model"
+    print(f"folder_name: {folder_name}")
     train_dir = f"./data/{folder_name}/train.csv"
     valid_dir = f"./data/{folder_name}/valid.csv"
     test_dir = f"./data/{folder_name}/test.csv"
     tableA_dir = f"./data/{folder_name}/tableA.csv"
     tableB_dir = f"./data/{folder_name}/tableB.csv"
-    output_dir = "flan_t5"+f"_{folder_name}_base_model"
+
+
 
     return train_dir, valid_dir, test_dir, tableA_dir, tableB_dir,output_dir
 

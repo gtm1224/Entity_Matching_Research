@@ -41,14 +41,13 @@ if __name__ == "__main__":
     # tableB_dir = "./data/Warlmart-amazon/tableB.csv"
     # output_dir = "flan_t5_Warlmart-amazon_base_model"
 
-    train_dir,valid_dir,test_dir,tableA_dir,tableB_dir,output_dir = get_dir_for_base_model_training("Warlmart-amazon")
+    train_dir,valid_dir,test_dir,tableA_dir,tableB_dir,output_dir = get_dir_for_base_model_training("wdc-computers")
     print(output_dir)
-    # to train with ea data, we only need to change the trian_dir
-    train_dir = "./data/ea_data/walmart-amazon_train_ea.csv"
-    output_dir += "_with_ea"
-    # print(output_dir)
     # print(train_dir)
-    # exit()
+    exit()
+    # to train with ea data, we only need to change the trian_dir
+    # train_dir = "./data/ea_data/abt-buy_train_ea.csv"
+    # output_dir += "_with_ea"
 
 
     pairs_train = pd.read_csv(train_dir)
