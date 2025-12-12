@@ -1,11 +1,11 @@
 # Configuration for EA Data Generator - CEP Datasets
 
 # Input files (required)
-input_A: /home/danielruiz/workspace/phd/Entity_Matching_Research/data/Warlmart-amazon/tableA_processed.csv
-input_B: /home/danielruiz/workspace/phd/Entity_Matching_Research/data/Warlmart-amazon/tableB_processed.csv
-input_matches: /home/danielruiz/workspace/phd/Entity_Matching_Research/data/Warlmart-amazon/train.csv
-prompt: /home/danielruiz/workspace/phd/Entity_Matching_Research/data/ea_data/prompts/cep.txt
-output: /home/danielruiz/workspace/phd/Entity_Matching_Research/data/ea_data/walmart-amazon_train_ea.csv
+input_A: /home/danielruiz/workspace/phd/csci-662/Entity_Matching_Research/data/Warlmart-amazon/tableA_processed.csv
+input_B: /home/danielruiz/workspace/phd/csci-662/Entity_Matching_Research/data/Warlmart-amazon/tableB_processed.csv
+input_matches: /home/danielruiz/workspace/phdcsci-662/Entity_Matching_Research/data/Warlmart-amazon/train.csv
+prompt: /home/danielruiz/workspace/phd/csci-662/Entity_Matching_Research/data/ea_data/prompts/cep.txt
+output: /home/danielruiz/workspace/phd/csci-662/Entity_Matching_Research/data/ea_data/walmart-amazon_train_ea.csv
 
 # Column mapping: maps dataset column names to prompt template tags
 # Format: dataset_column_name -> PROMPT_TAG_NAME
@@ -16,7 +16,7 @@ column_mapping:
 
 # vLLM configuration
 endpoint: http://localhost:8000/v1
-model: /mistralai/Mistral-7B-Instruct-v0.1
+model: mistralai/Mistral-7B-Instruct-v0.1
 
 # Processing parameters
 batch_size: 50

@@ -4,10 +4,13 @@ Explanation Augmented (EA) Data Generator
 Generates explanations for entity matching questions by using a local LLM hosted via vLLM.
 
 Usage:
-    python generate.py --config config.yaml
+    uv run generate.py --config <path_to_config.yaml>
     
     # Or with verbose logging and dry run
-    python generate.py --config config.yaml --verbose --dry-run
+    uv run generate.py --config <path_to_config.yaml> --verbose --dry-run
+
+    # Or verify prompt and exit
+    uv run generate.py --config <path_to_config.yaml> --verify-prompt
 """
 
 import asyncio
