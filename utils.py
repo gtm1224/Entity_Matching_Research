@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 # MAX_IN, MAX_OUT = 256, 4
 from sklearn.metrics import precision_recall_fscore_support, accuracy_score
-
+from ea_modification import *
 def fmt(x):
     s = str(x).strip()
     return s if s and s.lower() != "nan" else "[EMPTY]"
@@ -59,11 +59,30 @@ def match_no_match(row):
 
     return label
 
-def apply_label(df):
-    df["new_label"] = df.apply(match_no_match, axis=1)
+def match_no_match_ablation(row,ablation=None):
+    label = None
+    if row["label"] == 1:
+        label = "match"
+    else:
+        label = "no match"
 
-def preprocessing_dataset_auto(df, tableA, tableB):
-    apply_label(df)
+    if ablation is not None:
+        label += f' [explanation] {fmt(row[ablation])}'
+
+    return label
+
+def apply_label(df,ablation=None):
+    if ablation == 'B':
+        apply_shorten(df)
+        df['new_label']=df.apply(match_no_match_ablation, axis=1,ablation="explanation_short")
+
+    else:
+        df["new_label"] = df.apply(match_no_match, axis=1)
+
+
+
+def preprocessing_dataset_auto(df, tableA, tableB,ablation=None):
+    apply_label(df,ablation=ablation)
     apply_entity_auto(df, tableA, tableB)
 
 # for EA training

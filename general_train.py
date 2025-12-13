@@ -44,10 +44,10 @@ if __name__ == "__main__":
     train_dir,valid_dir,test_dir,tableA_dir,tableB_dir,output_dir = get_dir_for_base_model_training("wdc-computers")
     print(output_dir)
     # print(train_dir)
-    exit()
+
     # to train with ea data, we only need to change the trian_dir
-    # train_dir = "./data/ea_data/abt-buy_train_ea.csv"
-    # output_dir += "_with_ea"
+    train_dir = "./data/ea_data/computers_train_ea.csv"
+    output_dir += "_with_ea"
 
 
     pairs_train = pd.read_csv(train_dir)
@@ -56,14 +56,14 @@ if __name__ == "__main__":
     tableA = pd.read_csv(tableA_dir).fillna("")
     tableB = pd.read_csv(tableB_dir).fillna("")
 
-    preprocessing_dataset_auto(pairs_train, tableA, tableB)
+    preprocessing_dataset_auto(pairs_train, tableA, tableB,ablation="B")
     preprocessing_dataset_auto(pairs_valid, tableA, tableB)
     preprocessing_dataset_auto(pairs_test, tableA, tableB)
 
-    #pairs_train.to_csv("test.csv", index=False)
+    pairs_train.to_csv("test_ea.csv", index=False)
 
-    # print(pairs_train.head(10))
-    # exit()
+    print(pairs_train.head(10))
+    exit()
     ds = DatasetDict({
         "train": Dataset.from_dict({
             "input": pairs_train["sample"].tolist(),
