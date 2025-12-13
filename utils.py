@@ -75,6 +75,9 @@ def apply_label(df,ablation=None):
     if ablation == 'B':
         apply_shorten(df)
         df['new_label']=df.apply(match_no_match_ablation, axis=1,ablation="explanation_short")
+    elif ablation == 'E':
+        apply_random_corruption(df)
+        df['new_label'] = df.apply(match_no_match_ablation, axis=1, ablation="explanation_corrupt")
 
     else:
         df["new_label"] = df.apply(match_no_match, axis=1)
