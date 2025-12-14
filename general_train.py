@@ -56,7 +56,7 @@ if __name__ == "__main__":
     tableA = pd.read_csv(tableA_dir).fillna("")
     tableB = pd.read_csv(tableB_dir).fillna("")
 
-    preprocessing_dataset_auto(pairs_train, tableA, tableB,ablation="B")
+    preprocessing_dataset_auto(pairs_train, tableA, tableB,ablation="E")
     preprocessing_dataset_auto(pairs_valid, tableA, tableB)
     preprocessing_dataset_auto(pairs_test, tableA, tableB)
 
@@ -103,13 +103,13 @@ if __name__ == "__main__":
         per_device_eval_batch_size=2,
         gradient_accumulation_steps=1,
         learning_rate=1e-4,
-        num_train_epochs=5,
+        num_train_epochs=10,
         weight_decay=0.01,
         warmup_ratio=0.05,
         logging_steps=100,
-        eval_strategy="no",
+        eval_strategy="epoch",
         save_strategy="epoch",
-        load_best_model_at_end=False,
+        load_best_model_at_end=True,
         metric_for_best_model="f1",
         fp16=False,  # or False if CPU
         bf16=True,
