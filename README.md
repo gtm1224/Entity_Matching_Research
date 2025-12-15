@@ -106,7 +106,11 @@ Use `flan_t5_classification.py` to evaluate trained checkpoints.
     ```python
     base_dir = "./flan_t5_wdc/computers_base_model_with_ea"
     ```
-3.  Run the evaluation:
+3.  Set dataset you want to test
+    ```python
+     get_dir_for_base_model_training("Warlmart-amazon")
+    ```
+4.  Run the evaluation:
     ```bash
     python flan_t5_classification.py
     ```
