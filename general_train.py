@@ -62,8 +62,8 @@ if __name__ == "__main__":
 
     pairs_train.to_csv("test_ea.csv", index=False)
 
-    print(pairs_train.head(10))
-    exit()
+    # print(pairs_train.head(10))
+    # exit()
     ds = DatasetDict({
         "train": Dataset.from_dict({
             "input": pairs_train["sample"].tolist(),
@@ -103,7 +103,7 @@ if __name__ == "__main__":
         per_device_eval_batch_size=2,
         gradient_accumulation_steps=1,
         learning_rate=1e-4,
-        num_train_epochs=10,
+        num_train_epochs=10,#this can be changed,feel free to change it.
         weight_decay=0.01,
         warmup_ratio=0.05,
         logging_steps=100,
